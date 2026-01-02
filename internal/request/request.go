@@ -1,14 +1,25 @@
 package request
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
-	"unicode"
+)
+
+const bufferSize = 8
+
+type parserState int
+
+const (
+	stateInitialized parserState = iota
+	stateDone
 )
 
 type Request struct {
 	RequestLine RequestLine
+	state       parserState
 }
 
 type RequestLine struct {
@@ -18,46 +29,90 @@ type RequestLine struct {
 }
 
 func RequestFromReader(reader io.Reader) (*Request, error) {
-	bytes, err := io.ReadAll(reader)
-	if err != nil {
-		return nil, err
-	}
-
-	parts := strings.Split(string(bytes), "\r\n")
-	requestLine, err := parseRequestLine(parts[0])
-	if err != nil {
-		return nil, err
-	}
-
+	buff := make([]byte, bufferSize)
+	readToIndex := 0
 	request := &Request{
-		RequestLine: *requestLine,
+		state: stateInitialized,
+	}
+
+	for request.state != stateDone {
+		if readToIndex >= len(buff) {
+			newBuff := make([]byte, len(buff)*2)
+			copy(newBuff, buff)
+			buff = newBuff
+		}
+
+		n, err := reader.Read(buff[readToIndex:])
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				request.state = stateDone
+				break
+			}
+			return nil, err
+		}
+
+		readToIndex += n
+
+		n, err = request.parse(buff[:readToIndex])
+		if err != nil {
+			return nil, err
+		}
+
+		copy(buff, buff[n:])
+		readToIndex -= n
 	}
 
 	return request, nil
 }
 
-func parseRequestLine(str string) (*RequestLine, error) {
-	parts := strings.Split(str, " ")
+func (r *Request) parse(data []byte) (int, error) {
+	switch r.state {
+	case stateInitialized:
+		reqLine, n, err := parseRequestLine(data)
+		if err != nil {
+			return 0, err
+		}
+		if n == 0 {
+			return 0, nil
+		}
+
+		r.state = stateDone
+		r.RequestLine = *reqLine
+		return n, nil
+	case stateDone:
+		return 0, fmt.Errorf("Error: trying to read data in a done state")
+	default:
+		return 0, fmt.Errorf("Error: unknown state")
+	}
+}
+
+func parseRequestLine(data []byte) (*RequestLine, int, error) {
+	idx := bytes.Index(data, []byte("\r\n"))
+	if idx == -1 {
+		return nil, 0, nil
+	}
+
+	parts := strings.Split(string(data[:idx]), " ")
 	if len(parts) != 3 {
-		return nil, fmt.Errorf("Request line: wrong number of parts")
+		return nil, 0, fmt.Errorf("Request line: wrong number of parts")
 	}
 
 	method := parts[0]
 	for _, c := range method {
-		if c < 'A' || c > 'z' {
-			return nil, fmt.Errorf("Request line: invalid method")
+		if c < 'A' || c > 'Z' {
+			return nil, 0, fmt.Errorf("Request line: invalid method")
 		}
 	}
 
 	httpParts := strings.Split(parts[2], "/")
 	if len(httpParts) != 2 {
-		return nil, fmt.Errorf("Request line: invalid HTTP-version")
+		return nil, 0, fmt.Errorf("Request line: invalid HTTP-version")
 	}
 	if httpParts[0] != "HTTP" {
-		return nil, fmt.Errorf("Request line: invalid HTTP-version name")
+		return nil, 0, fmt.Errorf("Request line: invalid HTTP-version name")
 	}
 	if httpParts[1] != "1.1" {
-		return nil, fmt.Errorf("Request line: invalid HTTP-version")
+		return nil, 0, fmt.Errorf("Request line: invalid HTTP-version")
 	}
 
 	requestLine := &RequestLine{
@@ -66,5 +121,5 @@ func parseRequestLine(str string) (*RequestLine, error) {
 		Method:        parts[0],
 	}
 
-	return requestLine, nil
+	return requestLine, idx + 2, nil
 }
