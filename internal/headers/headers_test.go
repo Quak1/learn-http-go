@@ -28,6 +28,16 @@ func TestParseFieldLine(t *testing.T) {
 	assert.Equal(t, 50, n)
 	assert.False(t, done)
 
+	// Test: Valid header multiple value
+	headers = NewHeaders()
+	headers.Parse([]byte("Host: localhost:42069\r\n"))
+	n, done, err = headers.Parse([]byte("host: :6969\r\n"))
+	require.NoError(t, err)
+	require.NotNil(t, headers)
+	assert.Equal(t, "localhost:42069, :6969", headers.Get("host"))
+	assert.Equal(t, 13, n)
+	assert.False(t, done)
+
 	// Test: Valid done
 	headers = NewHeaders()
 	headers.Parse([]byte("Host: localhost:42069\r\n\r\n"))

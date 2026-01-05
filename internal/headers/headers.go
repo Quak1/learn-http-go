@@ -76,8 +76,11 @@ func isValidKey(data []byte) bool {
 }
 
 func (h Headers) Set(key, value string) {
-	lower := strings.ToLower(key)
-	h[lower] = value
+	key = strings.ToLower(key)
+	if v, ok := h[key]; ok {
+		value = v + ", " + value
+	}
+	h[key] = value
 }
 
 func (h Headers) Get(key string) string {
