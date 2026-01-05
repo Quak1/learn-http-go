@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/Quak1/learn-http-go/internal/headers"
 )
 
 const bufferSize = 8
@@ -15,10 +17,12 @@ type parserState int
 const (
 	stateInitialized parserState = iota
 	stateDone
+	stateParsingHeaders
 )
 
 type Request struct {
 	RequestLine RequestLine
+	Headers     headers.Headers
 	state       parserState
 }
 
@@ -45,7 +49,9 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 		n, err := reader.Read(buff[readToIndex:])
 		if err != nil {
 			if errors.Is(err, io.EOF) {
-				request.state = stateDone
+				if request.state != stateDone {
+					return nil, fmt.Errorf("Error: incomplete request")
+				}
 				break
 			}
 			return nil, err
@@ -66,6 +72,22 @@ func RequestFromReader(reader io.Reader) (*Request, error) {
 }
 
 func (r *Request) parse(data []byte) (int, error) {
+	totalBytesParsed := 0
+	for r.state != stateDone {
+		n, err := r.parseSingle(data[totalBytesParsed:])
+		if err != nil {
+			return 0, err
+		}
+		if n == 0 {
+			break
+		}
+		totalBytesParsed += n
+	}
+
+	return totalBytesParsed, nil
+}
+
+func (r *Request) parseSingle(data []byte) (int, error) {
 	switch r.state {
 	case stateInitialized:
 		reqLine, n, err := parseRequestLine(data)
@@ -76,8 +98,19 @@ func (r *Request) parse(data []byte) (int, error) {
 			return 0, nil
 		}
 
-		r.state = stateDone
+		r.state = stateParsingHeaders
 		r.RequestLine = *reqLine
+		r.Headers = headers.NewHeaders()
+		return n, nil
+	case stateParsingHeaders:
+		n, done, err := r.Headers.Parse(data)
+		if err != nil {
+			return 0, err
+		}
+		if done {
+			r.state = stateDone
+		}
+
 		return n, nil
 	case stateDone:
 		return 0, fmt.Errorf("Error: trying to read data in a done state")
