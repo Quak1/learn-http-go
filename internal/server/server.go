@@ -5,6 +5,8 @@ import (
 	"log"
 	"net"
 	"sync/atomic"
+
+	"github.com/Quak1/learn-http-go/internal/response"
 )
 
 type Server struct {
@@ -51,10 +53,16 @@ func (s *Server) listen() {
 func (s *Server) handle(conn net.Conn) {
 	defer conn.Close()
 
-	msg := "HTTP/1.1 200 OK\r\n" +
-		"Content-Type: text/plain\r\n" +
-		"Content-Length: 13\r\n" +
-		"\r\n" +
-		"Hello World!\n"
-	conn.Write([]byte(msg))
+	err := response.WriteStatusLine(conn, response.StatusOK)
+	if err != nil {
+		log.Println("Error: couldn't write status line.", err)
+		return
+	}
+
+	headers := response.GetDefaultHeaders(0)
+	err = response.WriteHeaders(conn, headers)
+	if err != nil {
+		log.Println("Error: couldn't write headers.", err)
+		return
+	}
 }
