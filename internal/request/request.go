@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/Quak1/learn-http-go/internal/headers"
@@ -18,11 +19,13 @@ const (
 	stateInitialized parserState = iota
 	stateDone
 	stateParsingHeaders
+	stateParsingBody
 )
 
 type Request struct {
 	RequestLine RequestLine
 	Headers     headers.Headers
+	Body        []byte
 	state       parserState
 }
 
@@ -108,10 +111,31 @@ func (r *Request) parseSingle(data []byte) (int, error) {
 			return 0, err
 		}
 		if done {
+			r.state = stateParsingBody
+		}
+		return n, nil
+	case stateParsingBody:
+		contentLengthStr := r.Headers.Get("Content-Length")
+		if contentLengthStr == "" {
+			r.state = stateDone
+			return len(data), nil
+		}
+
+		contentLength, err := strconv.Atoi(contentLengthStr)
+		if err != nil {
+			return 0, fmt.Errorf("Error: invalid Content-Length value, not a number")
+		}
+		r.Body = append(r.Body, data...)
+
+		bodyLen := len(r.Body)
+		if bodyLen > contentLength {
+			return 0, fmt.Errorf("Error: available body data larger than Content-Length value")
+		}
+		if bodyLen == contentLength {
 			r.state = stateDone
 		}
 
-		return n, nil
+		return len(data), nil
 	case stateDone:
 		return 0, fmt.Errorf("Error: trying to read data in a done state")
 	default:
