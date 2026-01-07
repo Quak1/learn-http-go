@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"sync/atomic"
@@ -13,19 +12,6 @@ import (
 )
 
 type Handler func(w *response.Writer, req *request.Request)
-
-type HandlerError struct {
-	StatusCode response.StatusCode
-	Message    string
-}
-
-func (h HandlerError) Write(writer io.Writer) {
-	w := response.NewResponseWriter(writer)
-	w.WriteStatusLine(h.StatusCode)
-	headers := response.GetDefaultHeaders(len(h.Message))
-	w.WriteHeaders(headers)
-	w.WriteBody([]byte(h.Message))
-}
 
 type Server struct {
 	handler      Handler
@@ -75,11 +61,6 @@ func (s *Server) handle(conn net.Conn) {
 
 	req, err := request.RequestFromReader(conn)
 	if err != nil {
-		requestError := &HandlerError{
-			StatusCode: response.StatusBadRequest,
-			Message:    err.Error(),
-		}
-		requestError.Write(conn)
 		return
 	}
 
@@ -87,19 +68,6 @@ func (s *Server) handle(conn net.Conn) {
 	writer := response.NewResponseWriter(&buff)
 	s.handler(writer, req)
 
-	// err = response.WriteStatusLine(conn, response.StatusOK)
-	// if err != nil {
-	// 	log.Println("Error: couldn't write status line.", err)
-	// 	return
-	// }
-
 	b := buff.Bytes()
-	// headers := response.GetDefaultHeaders(len(b))
-	// err = response.WriteHeaders(conn, headers)
-	// if err != nil {
-	// 	log.Println("Error: couldn't write headers.", err)
-	// 	return
-	// }
-
 	conn.Write(b)
 }

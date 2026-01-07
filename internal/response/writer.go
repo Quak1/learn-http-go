@@ -3,30 +3,16 @@ package response
 import (
 	"fmt"
 	"io"
-	"strconv"
 
 	"github.com/Quak1/learn-http-go/internal/headers"
 )
 
-type StatusCode int
-
-const (
-	StatusOK                  StatusCode = 200
-	StatusBadRequest          StatusCode = 400
-	StatusInternalServerError StatusCode = 500
-)
-
-const HTTPVersion = "HTTP/1.1"
-
 type writerState int
-
-var stateError = fmt.Errorf("Error: writer is in the wrong state for this operation make sure to use the methods in order. Writer.WriteStatusLine -> Writer.WriteHeaders -> Writer.WriteBody")
 
 const (
 	WriterStateStatusLine writerState = iota
 	WriterStateHeaders
 	WriterStateBody
-	WriterStateDone
 )
 
 type Writer struct {
@@ -46,15 +32,8 @@ func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
 		return fmt.Errorf("Error: cannot write status line on state %d", w.state)
 	}
 
-	var reason string
-	switch statusCode {
-	case StatusOK:
-		reason = "OK"
-	case StatusBadRequest:
-		reason = "Bad Request"
-	case StatusInternalServerError:
-		reason = "Internal Server Error"
-	}
+	reason := getStatusReason(statusCode)
+	HTTPVersion := "HTTP/1.1"
 
 	_, err := fmt.Fprintf(w.writer, "%s %d %s\r\n", HTTPVersion, statusCode, reason)
 	w.state = WriterStateHeaders
@@ -63,7 +42,7 @@ func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
 }
 
 func (w *Writer) WriteHeaders(headers headers.Headers) error {
-	if w.state != WriterStateStatusLine {
+	if w.state != WriterStateHeaders {
 		return fmt.Errorf("Error: cannot write headers on state %d", w.state)
 	}
 
@@ -80,17 +59,9 @@ func (w *Writer) WriteHeaders(headers headers.Headers) error {
 }
 
 func (w *Writer) WriteBody(p []byte) (int, error) {
-	if w.state != WriterStateStatusLine {
+	if w.state != WriterStateBody {
 		return 0, fmt.Errorf("Error: cannot write body on state %d", w.state)
 	}
 
 	return w.writer.Write(p)
-}
-
-func GetDefaultHeaders(contentLen int) headers.Headers {
-	h := headers.NewHeaders()
-	h.Set("Content-Length", strconv.Itoa(contentLen))
-	h.Set("Connection", "close")
-	h.Set("Content-Type", "text/plain")
-	return h
 }
