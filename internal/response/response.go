@@ -18,7 +18,34 @@ const (
 
 const HTTPVersion = "HTTP/1.1"
 
-func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
+type writerState int
+
+var stateError = fmt.Errorf("Error: writer is in the wrong state for this operation make sure to use the methods in order. Writer.WriteStatusLine -> Writer.WriteHeaders -> Writer.WriteBody")
+
+const (
+	WriterStateStatusLine writerState = iota
+	WriterStateHeaders
+	WriterStateBody
+	WriterStateDone
+)
+
+type Writer struct {
+	writer io.Writer
+	state  writerState
+}
+
+func NewResponseWriter(w io.Writer) *Writer {
+	return &Writer{
+		writer: w,
+		state:  WriterStateStatusLine,
+	}
+}
+
+func (w *Writer) WriteStatusLine(statusCode StatusCode) error {
+	if w.state != WriterStateStatusLine {
+		return fmt.Errorf("Error: cannot write status line on state %d", w.state)
+	}
+
 	var reason string
 	switch statusCode {
 	case StatusOK:
@@ -29,9 +56,35 @@ func WriteStatusLine(w io.Writer, statusCode StatusCode) error {
 		reason = "Internal Server Error"
 	}
 
-	_, err := fmt.Fprintf(w, "%s %d %s\r\n", HTTPVersion, statusCode, reason)
+	_, err := fmt.Fprintf(w.writer, "%s %d %s\r\n", HTTPVersion, statusCode, reason)
+	w.state = WriterStateHeaders
 
 	return err
+}
+
+func (w *Writer) WriteHeaders(headers headers.Headers) error {
+	if w.state != WriterStateStatusLine {
+		return fmt.Errorf("Error: cannot write headers on state %d", w.state)
+	}
+
+	for v, k := range headers {
+		_, err := fmt.Fprintf(w.writer, "%s: %s\r\n", v, k)
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err := w.writer.Write([]byte("\r\n"))
+	w.state = WriterStateBody
+	return err
+}
+
+func (w *Writer) WriteBody(p []byte) (int, error) {
+	if w.state != WriterStateStatusLine {
+		return 0, fmt.Errorf("Error: cannot write body on state %d", w.state)
+	}
+
+	return w.writer.Write(p)
 }
 
 func GetDefaultHeaders(contentLen int) headers.Headers {
@@ -40,16 +93,4 @@ func GetDefaultHeaders(contentLen int) headers.Headers {
 	h.Set("Connection", "close")
 	h.Set("Content-Type", "text/plain")
 	return h
-}
-
-func WriteHeaders(w io.Writer, headers headers.Headers) error {
-	for v, k := range headers {
-		_, err := fmt.Fprintf(w, "%s: %s\r\n", v, k)
-		if err != nil {
-			return err
-		}
-	}
-
-	_, err := w.Write([]byte("\r\n"))
-	return err
 }

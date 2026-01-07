@@ -12,18 +12,19 @@ import (
 	"github.com/Quak1/learn-http-go/internal/response"
 )
 
-type Handler func(w io.Writer, req *request.Request) *HandlerError
+type Handler func(w *response.Writer, req *request.Request)
 
 type HandlerError struct {
 	StatusCode response.StatusCode
 	Message    string
 }
 
-func (h HandlerError) Write(w io.Writer) {
-	response.WriteStatusLine(w, h.StatusCode)
+func (h HandlerError) Write(writer io.Writer) {
+	w := response.NewResponseWriter(writer)
+	w.WriteStatusLine(h.StatusCode)
 	headers := response.GetDefaultHeaders(len(h.Message))
-	response.WriteHeaders(w, headers)
-	w.Write([]byte(h.Message))
+	w.WriteHeaders(headers)
+	w.WriteBody([]byte(h.Message))
 }
 
 type Server struct {
@@ -83,25 +84,22 @@ func (s *Server) handle(conn net.Conn) {
 	}
 
 	var buff bytes.Buffer
-	handlerError := s.handler(&buff, req)
-	if handlerError != nil {
-		handlerError.Write(conn)
-		return
-	}
+	writer := response.NewResponseWriter(&buff)
+	s.handler(writer, req)
 
-	err = response.WriteStatusLine(conn, response.StatusOK)
-	if err != nil {
-		log.Println("Error: couldn't write status line.", err)
-		return
-	}
+	// err = response.WriteStatusLine(conn, response.StatusOK)
+	// if err != nil {
+	// 	log.Println("Error: couldn't write status line.", err)
+	// 	return
+	// }
 
 	b := buff.Bytes()
-	headers := response.GetDefaultHeaders(len(b))
-	err = response.WriteHeaders(conn, headers)
-	if err != nil {
-		log.Println("Error: couldn't write headers.", err)
-		return
-	}
+	// headers := response.GetDefaultHeaders(len(b))
+	// err = response.WriteHeaders(conn, headers)
+	// if err != nil {
+	// 	log.Println("Error: couldn't write headers.", err)
+	// 	return
+	// }
 
 	conn.Write(b)
 }

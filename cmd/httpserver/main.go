@@ -1,13 +1,13 @@
 package main
 
 import (
-	"io"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/Quak1/learn-http-go/internal/request"
+	"github.com/Quak1/learn-http-go/internal/response"
 	"github.com/Quak1/learn-http-go/internal/server"
 )
 
@@ -27,21 +27,49 @@ func main() {
 	log.Println("Server gracefully stopped")
 }
 
-func handler(w io.Writer, req *request.Request) *server.HandlerError {
+func handler(w *response.Writer, req *request.Request) {
+	var body string
 	switch req.RequestLine.RequestTarget {
 	case "/yourproblem":
-		return &server.HandlerError{
-			StatusCode: 400,
-			Message:    "Your problem is not my problem\n",
-		}
+		w.WriteStatusLine(400)
+		body = `<html>
+  <head>
+    <title>400 Bad Request</title>
+  </head>
+  <body>
+    <h1>Bad Request</h1>
+    <p>Your request honestly kinda sucked.</p>
+  </body>
+</html>
+`
 	case "/myproblem":
-		return &server.HandlerError{
-			StatusCode: 500,
-			Message:    "Woopsie, my bad\n",
-		}
+		w.WriteStatusLine(500)
+		body = `<html>
+  <head>
+    <title>500 Internal Server Error</title>
+  </head>
+  <body>
+    <h1>Internal Server Error</h1>
+    <p>Okay, you know what? This one is on me.</p>
+  </body>
+</html>
+`
 	default:
-		w.Write([]byte("All good, frfr\n"))
+		w.WriteStatusLine(200)
+		body = `<html>
+  <head>
+    <title>200 OK</title>
+  </head>
+  <body>
+    <h1>Success!</h1>
+    <p>Your request was an absolute banger.</p>
+  </body>
+</html>
+`
 	}
 
-	return nil
+	headers := response.GetDefaultHeaders(len(body))
+	headers.Replace("Content-Type", "text/html")
+	w.WriteHeaders(headers)
+	w.WriteBody([]byte(body))
 }

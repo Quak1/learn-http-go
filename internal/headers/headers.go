@@ -87,3 +87,8 @@ func (h Headers) Get(key string) string {
 	lower := strings.ToLower(key)
 	return h[lower]
 }
+
+func (h Headers) Replace(key, value string) {
+	key = strings.ToLower(key)
+	h[key] = value
+}
