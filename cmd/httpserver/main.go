@@ -1,15 +1,18 @@
 package main
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
+	"github.com/Quak1/learn-http-go/internal/headers"
 	"github.com/Quak1/learn-http-go/internal/request"
 	"github.com/Quak1/learn-http-go/internal/response"
 	"github.com/Quak1/learn-http-go/internal/server"
@@ -119,15 +122,16 @@ func proxyHandler(w *response.Writer, req *request.Request) {
 
 	w.WriteStatusLine(response.StatusOK)
 
-	headers := response.GetDefaultHeaders(0)
-	headers.Delete("Content-Length")
-	headers.Set("Transfer-Econding", "chunked")
-	w.WriteHeaders(headers)
+	h := response.GetDefaultHeaders(0)
+	h.Delete("Content-Length")
+	h.Set("Transfer-Encoding", "chunked")
+	h.Set("Trailer", "X-Content-SHA256, X-Content-Length")
+	w.WriteHeaders(h)
 
 	buff := make([]byte, 1024)
-	n, err := resp.Body.Read(buff)
+	body := []byte{}
 	for {
-		n, err = resp.Body.Read(buff)
+		n, err := resp.Body.Read(buff)
 		if err == io.EOF {
 			break
 		}
@@ -135,8 +139,16 @@ func proxyHandler(w *response.Writer, req *request.Request) {
 			fmt.Println("Error: couldn't read response")
 			break
 		}
-		w.WriteChunkedBody(buff[:n])
+		_, err = w.WriteChunkedBody(buff[:n])
+		body = append(body, buff[:n]...)
 	}
 
 	w.WriteChunkedBodyDone()
+
+	sha256sum := fmt.Sprintf("%x", sha256.Sum256(body))
+	trailers := headers.NewHeaders()
+	trailers.Set("X-Content-SHA256", sha256sum)
+	trailers.Set("X-Content-Length", strconv.Itoa(len(body)))
+
+	w.WriteTrailers(trailers)
 }

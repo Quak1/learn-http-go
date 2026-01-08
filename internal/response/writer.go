@@ -3,7 +3,6 @@ package response
 import (
 	"fmt"
 	"io"
-	"strconv"
 
 	"github.com/Quak1/learn-http-go/internal/headers"
 )
@@ -14,6 +13,7 @@ const (
 	WriterStateStatusLine writerState = iota
 	WriterStateHeaders
 	WriterStateBody
+	WriterStateTrailers
 )
 
 type Writer struct {
@@ -72,23 +72,26 @@ func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
 		return 0, fmt.Errorf("Error: cannot write body on state %d", w.state)
 	}
 
-	sizeHex := strconv.FormatInt(int64(len(p)), 16)
-	n, err := fmt.Fprintf(w.writer, "%s\r\n", sizeHex)
+	nTotal := 0
+	n, err := fmt.Fprintf(w.writer, "%x\r\n", len(p))
 	if err != nil {
 		return 0, err
 	}
+	nTotal += n
 
-	n2, err := w.writer.Write(p)
+	n, err = w.writer.Write(p)
 	if err != nil {
 		return 0, nil
 	}
+	nTotal += n
 
-	n3, err := w.writer.Write([]byte("\r\n"))
+	n, err = w.writer.Write([]byte("\r\n"))
 	if err != nil {
 		return 0, nil
 	}
+	nTotal += n
 
-	return n + n2 + n3, nil
+	return nTotal, nil
 }
 
 func (w *Writer) WriteChunkedBodyDone() (int, error) {
@@ -96,5 +99,22 @@ func (w *Writer) WriteChunkedBodyDone() (int, error) {
 		return 0, fmt.Errorf("Error: cannot write body on state %d", w.state)
 	}
 
-	return w.writer.Write([]byte("0\r\n\r\n"))
+	w.state = WriterStateTrailers
+	return w.writer.Write([]byte("0\r\n"))
+}
+
+func (w *Writer) WriteTrailers(h headers.Headers) error {
+	if w.state != WriterStateTrailers {
+		return fmt.Errorf("Error: cannot write trailers on state %d", w.state)
+	}
+
+	for k, v := range h {
+		_, err := fmt.Fprintf(w.writer, "%s: %s\r\n", k, v)
+		if err != nil {
+			return err
+		}
+	}
+
+	_, err := w.writer.Write([]byte("\r\n"))
+	return err
 }

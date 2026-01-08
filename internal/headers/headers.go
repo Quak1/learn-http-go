@@ -84,8 +84,8 @@ func (h Headers) Set(key, value string) {
 }
 
 func (h Headers) Get(key string) string {
-	lower := strings.ToLower(key)
-	return h[lower]
+	key = strings.ToLower(key)
+	return h[key]
 }
 
 func (h Headers) Replace(key, value string) {
