@@ -42,6 +42,8 @@ func handler(w *response.Writer, req *request.Request) {
 		myProblemHandler(w, req)
 	} else if strings.HasPrefix(target, "/httpbin") {
 		proxyHandler(w, req)
+	} else if target == "/video" {
+		videoHandler(w, req)
 	} else {
 		successHandler(w, req)
 	}
@@ -151,4 +153,20 @@ func proxyHandler(w *response.Writer, req *request.Request) {
 	trailers.Set("X-Content-Length", strconv.Itoa(len(body)))
 
 	w.WriteTrailers(trailers)
+}
+
+func videoHandler(w *response.Writer, req *request.Request) {
+	video, err := os.ReadFile("./assets/vim.mp4")
+	if err != nil {
+		fmt.Println("Couldn't read file:", err)
+		return
+	}
+
+	w.WriteStatusLine(200)
+
+	headers := response.GetDefaultHeaders(len(video))
+	headers.Replace("Content-Type", "video/mp4")
+	w.WriteHeaders(headers)
+
+	w.WriteBody([]byte(video))
 }
