@@ -3,6 +3,7 @@ package response
 import (
 	"fmt"
 	"io"
+	"strconv"
 
 	"github.com/Quak1/learn-http-go/internal/headers"
 )
@@ -64,4 +65,36 @@ func (w *Writer) WriteBody(p []byte) (int, error) {
 	}
 
 	return w.writer.Write(p)
+}
+
+func (w *Writer) WriteChunkedBody(p []byte) (int, error) {
+	if w.state != WriterStateBody {
+		return 0, fmt.Errorf("Error: cannot write body on state %d", w.state)
+	}
+
+	sizeHex := strconv.FormatInt(int64(len(p)), 16)
+	n, err := fmt.Fprintf(w.writer, "%s\r\n", sizeHex)
+	if err != nil {
+		return 0, err
+	}
+
+	n2, err := w.writer.Write(p)
+	if err != nil {
+		return 0, nil
+	}
+
+	n3, err := w.writer.Write([]byte("\r\n"))
+	if err != nil {
+		return 0, nil
+	}
+
+	return n + n2 + n3, nil
+}
+
+func (w *Writer) WriteChunkedBodyDone() (int, error) {
+	if w.state != WriterStateBody {
+		return 0, fmt.Errorf("Error: cannot write body on state %d", w.state)
+	}
+
+	return w.writer.Write([]byte("0\r\n\r\n"))
 }

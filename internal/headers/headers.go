@@ -92,3 +92,8 @@ func (h Headers) Replace(key, value string) {
 	key = strings.ToLower(key)
 	h[key] = value
 }
+
+func (h Headers) Delete(key string) {
+	key = strings.ToLower(key)
+	delete(h, key)
+}
